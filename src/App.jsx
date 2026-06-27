@@ -1,6 +1,8 @@
 import { useState, useRef } from 'react'
+import { toJpeg } from 'html-to-image'
 import { insertBill, getBillByMonth, updateBill, getAllBills } from './services/billsApi'
 import { MonthlyTotalUnitsChart, UserUnitsBreakdownChart, UserMonthlyUnitsChart } from './components/ElectricityCharts'
+import { MonthStatsComparison } from './components/MonthStatsComparison'
 import './App.css'
 
 const MONTHS = [
@@ -41,7 +43,107 @@ function App() {
   const [existingId, setExistingId] = useState(null)
   const [prevMonth, setPrevMonth] = useState(null)
   const [refreshChartTrigger, setRefreshChartTrigger] = useState(0)
+  const [exporting, setExporting] = useState(false)
   const resultRef = useRef(null)
+
+  const handleExportJpg = async () => {
+    if (!resultRef.current) return
+    try {
+      setExporting(true)
+      const dataUrl = await toJpeg(resultRef.current, {
+        quality: 0.95,
+        backgroundColor: '#ffffff',
+        filter: (node) => !node.classList?.contains('no-export'),
+      })
+      const link = document.createElement('a')
+      link.download = `electricity-bill-${result?.month || 'summary'}.jpg`
+      link.href = dataUrl
+      link.click()
+    } catch (err) {
+      console.error('Export error:', err)
+      alert('เกิดข้อผิดพลาดในการส่งออกภาพ: ' + err.message)
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const buildResultData = async (monthValue, yearValue, currentBill, directPrev) => {
+    try {
+      const allData = await getAllBills()
+      const sorted = [...(allData || [])].sort((a, b) => (a.month > b.month ? 1 : -1))
+      const targetPrefix = `${yearValue}-${monthValue}`
+      const idx = sorted.findIndex((b) => b.month?.startsWith(targetPrefix))
+
+      let prev = null
+      let prevPrev = null
+
+      if (idx !== -1) {
+        prev = idx > 0 ? sorted[idx - 1] : null
+        prevPrev = idx > 1 ? sorted[idx - 2] : null
+      } else if (directPrev) {
+        prev = directPrev
+      }
+
+      const parts = prev?.month?.split('-')
+      const prevMonthLabel = parts && parts[1] ? MONTHS.find((m) => m.value === parts[1])?.label : ''
+
+      const oakMeterNum = currentBill.oak_meter || 0
+      const mixMeterNum = currentBill.mix_meter || 0
+      const iceMeterNum = currentBill.ice_meter || 0
+      const cdMeterNum = currentBill.cd_meter || 0
+
+      const pOak = prev ? prev.oak_meter || 0 : 0
+      const pMix = prev ? prev.mix_meter || 0 : 0
+      const pIce = prev ? prev.ice_meter || 0 : 0
+      const pCd = prev ? prev.cd_meter || 0 : 0
+
+      const oakUnits = prev ? Math.max(0, oakMeterNum - pOak) : 0
+      const mixUnits = prev ? Math.max(0, mixMeterNum - pMix) : 0
+      const iceUnits = prev ? Math.max(0, iceMeterNum - pIce) : 0
+      const cdUnits = prev ? Math.max(0, cdMeterNum - pCd) : 0
+      const calculatedTotalUnits = oakUnits + mixUnits + iceUnits + cdUnits
+
+      return {
+        month: MONTHS.find((m) => m.value === monthValue)?.label,
+        billsSum: currentBill.bills_sum || 0,
+        totalUnits: currentBill.total_units || calculatedTotalUnits,
+        oakPay: currentBill.oak_pay || 0,
+        mixPay: currentBill.mix_pay || 0,
+        icePay: currentBill.ice_pay || 0,
+        cdPay: currentBill.cd_pay || 0,
+        oakUnits,
+        mixUnits,
+        iceUnits,
+        cdUnits,
+        prevMonthLabel,
+        prevBillsSum: prev ? prev.bills_sum : null,
+        prevTotalUnits: prev ? prev.total_units : null,
+        prevOakPay: prev ? prev.oak_pay : null,
+        prevMixPay: prev ? prev.mix_pay : null,
+        prevIcePay: prev ? prev.ice_pay : null,
+        prevCdPay: prev ? prev.cd_pay : null,
+        prevOakUnits: prev && prevPrev ? Math.max(0, (prev.oak_meter || 0) - (prevPrev.oak_meter || 0)) : null,
+        prevMixUnits: prev && prevPrev ? Math.max(0, (prev.mix_meter || 0) - (prevPrev.mix_meter || 0)) : null,
+        prevIceUnits: prev && prevPrev ? Math.max(0, (prev.ice_meter || 0) - (prevPrev.ice_meter || 0)) : null,
+        prevCdUnits: prev && prevPrev ? Math.max(0, (prev.cd_meter || 0) - (prevPrev.cd_meter || 0)) : null,
+      }
+    } catch (err) {
+      console.error('Error building result data:', err)
+      return {
+        month: MONTHS.find((m) => m.value === monthValue)?.label,
+        billsSum: currentBill.bills_sum || 0,
+        totalUnits: currentBill.total_units || 0,
+        oakPay: currentBill.oak_pay || 0,
+        mixPay: currentBill.mix_pay || 0,
+        icePay: currentBill.ice_pay || 0,
+        cdPay: currentBill.cd_pay || 0,
+        oakUnits: 0,
+        mixUnits: 0,
+        iceUnits: 0,
+        cdUnits: 0,
+      }
+    }
+  }
 
   const loadMonthData = async (monthValue, yearValue) => {
     setSelectedMonth(monthValue)
@@ -62,6 +164,7 @@ function App() {
 
     let pOak = 0, pMix = 0, pIce = 0, pCd = 0
     let foundPrev = false
+    let directPrevRecord = null
     const monthNum = Number(monthValue)
     let prevMonthStr = ''
     if (monthNum > 1) {
@@ -74,22 +177,15 @@ function App() {
       const prevRecords = await getBillByMonth(prevMonthStr)
       if (prevRecords && prevRecords.length > 0) {
         const p = prevRecords[0]
+        directPrevRecord = p
         setPrevMonth(p)
         foundPrev = true
         pOak = p.oak_meter || 0
         pMix = p.mix_meter || 0
         pIce = p.ice_meter || 0
         pCd = p.cd_meter || 0
-        console.log(`📅 Previous Month Data (${prevMonthStr}):`, {
-          Oak: pOak,
-          Mix: pMix,
-          Ice: pIce,
-          CD: pCd,
-          fullRecord: p,
-        })
       } else {
         setPrevMonth(null)
-        console.log(`⚠️ No previous month record found for ${prevMonthStr}`)
       }
     } catch (err) {
       setPrevMonth(null)
@@ -101,10 +197,6 @@ function App() {
       const records = await getBillByMonth(yearMonth)
       if (records && records.length > 0) {
         const bill = records[0]
-        const oakMeterNum = bill.oak_meter || 0
-        const mixMeterNum = bill.mix_meter || 0
-        const iceMeterNum = bill.ice_meter || 0
-        const cdMeterNum = bill.cd_meter || 0
 
         setBillsSum(bill.bills_sum?.toString() || '')
         setTotalUnits(bill.total_units?.toString() || '')
@@ -113,18 +205,9 @@ function App() {
         setIceMeter(bill.ice_meter?.toString() || '')
         setCdMeter(bill.cd_meter?.toString() || '')
         setExistingId(bill.id)
-        setResult({
-          month: MONTHS.find((m) => m.value === monthValue)?.label,
-          billsSum: bill.bills_sum || 0,
-          oakPay: bill.oak_pay || 0,
-          mixPay: bill.mix_pay || 0,
-          icePay: bill.ice_pay || 0,
-          cdPay: bill.cd_pay || 0,
-          oakUnits: foundPrev ? Math.max(0, oakMeterNum - pOak) : 0,
-          mixUnits: foundPrev ? Math.max(0, mixMeterNum - pMix) : 0,
-          iceUnits: foundPrev ? Math.max(0, iceMeterNum - pIce) : 0,
-          cdUnits: foundPrev ? Math.max(0, cdMeterNum - pCd) : 0,
-        })
+
+        const resultData = await buildResultData(monthValue, yearValue, bill, directPrevRecord)
+        setResult(resultData)
         setMessage('📋 พบข้อมูลเดือนนี้แล้ว — แก้ไขแล้วกดบันทึกได้เลย')
         setTimeout(() => {
           resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -292,18 +375,8 @@ function App() {
       setMessage('🔄 กำลังคำนวณซ้ำและอัปเดตข้อมูลทุกเดือน...')
       await recalculateAllBills()
       setMessage('✅ บันทึกและคำนวณใหม่ทุกเดือนในระบบเรียบร้อยแล้ว!')
-      setResult({
-        month: MONTHS.find((m) => m.value === selectedMonth)?.label,
-        billsSum: total,
-        oakPay,
-        mixPay,
-        icePay,
-        cdPay,
-        oakUnits,
-        mixUnits,
-        iceUnits,
-        cdUnits,
-      })
+      const resultData = await buildResultData(selectedMonth, selectedYear, billData, prevMonth)
+      setResult(resultData)
       setRefreshChartTrigger((prev) => prev + 1)
     } catch (err) {
       console.error(err)
@@ -505,27 +578,40 @@ function App() {
             </form>
           </div>
 
-          {/* Result — hidden until calculated or old month loaded */}
-          {showResult && (
-            <div ref={resultRef} className="bg-white rounded-2xl shadow-md p-6 text-center animate-[fadeIn_0.3s_ease-out]">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">
-                สรุปยอดค่าไฟประจำเดือน{result ? ` ${result.month}` : ''}
-              </h2>
-              <h3 className="text-lg font-semibold text-blue-600 mb-1">
-                ค่าไฟรวมทั้งบ้าน : {result ? `${result.billsSum.toLocaleString()} บาท` : '-'}
-              </h3>
-              <h3 className="text-base font-semibold text-gray-600 mt-4 mb-2">แยกตามมิเตอร์</h3>
-              <div className="flex flex-col gap-2 text-gray-700 justify-center items-center">
-                <p>ค่าไฟโอ๊ค : {result ? `${result.oakPay.toLocaleString()} บาท` : '-'}</p>
-                <p>ค่าไฟมิกซ์ : {result ? `${result.mixPay.toLocaleString()} บาท` : '-'}</p>
-                <p>ค่าไฟไอซ์ : {result ? `${result.icePay.toLocaleString()} บาท` : '-'}</p>
-                <p>ค่าไฟซีดี : {result ? `${result.cdPay.toLocaleString()} บาท` : '-'}</p>
-              </div>
+              {/* Result — hidden until calculated or old month loaded */}
+              {showResult && (
+                <div ref={resultRef} className="bg-white rounded-2xl shadow-md p-6 text-center animate-[fadeIn_0.3s_ease-out] relative">
+                  <div className="flex justify-end mb-2 no-export">
+                    <button
+                      type="button"
+                      onClick={handleExportJpg}
+                      disabled={exporting}
+                      className="px-3.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-xs flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer disabled:opacity-50 border border-blue-200/60"
+                    >
+                      <span>📷</span> {exporting ? 'กำลังบันทึกภาพ...' : 'ส่งออกเป็นภาพ JPG'}
+                    </button>
+                  </div>
+                  <h2 className="text-xl font-bold text-gray-800 mb-4">
+                    สรุปยอดค่าไฟประจำเดือน{result ? ` ${result.month}` : ''}
+                  </h2>
+                  <h3 className="text-lg font-semibold text-blue-600 mb-1">
+                    ค่าไฟรวมทั้งบ้าน : {result ? `${result.billsSum.toLocaleString()} บาท` : '-'}
+                  </h3>
+                  <h3 className="text-base font-semibold text-gray-600 mt-4 mb-2">แยกตามมิเตอร์</h3>
+                  <div className="flex flex-col gap-2 text-gray-700 justify-center items-center">
+                    <p>ค่าไฟโอ๊ค : {result ? `${result.oakPay.toLocaleString()} บาท` : '-'}</p>
+                    <p>ค่าไฟมิกซ์ : {result ? `${result.mixPay.toLocaleString()} บาท` : '-'}</p>
+                    <p>ค่าไฟไอซ์ : {result ? `${result.icePay.toLocaleString()} บาท` : '-'}</p>
+                    <p>ค่าไฟซีดี : {result ? `${result.cdPay.toLocaleString()} บาท` : '-'}</p>
+                  </div>
 
-              {/* Each unit user chart on the result */}
-              <UserUnitsBreakdownChart resultData={result} />
-            </div>
-          )}
+                  {/* Month-over-Month Stats Comparison */}
+                  <MonthStatsComparison resultData={result} />
+
+                  {/* Each unit user chart on the result */}
+                  <UserUnitsBreakdownChart resultData={result} />
+                </div>
+              )}
         </div>
 
         {/* Chart of total units every month */}
