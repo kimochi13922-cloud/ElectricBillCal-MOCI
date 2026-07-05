@@ -1,0 +1,17 @@
+name: Keep Supabase Alive
+
+on:
+  schedule:
+    # ตั้งเวลารันทุกๆ วันจันทร์ และ วันพฤหัสบดี ตอนเที่ยงคืน (00:00 UTC)
+    - cron: '0 0 * * 1,4'
+  workflow_dispatch: # ทำให้เราสามารถกดสั่งรันเองในหน้า GitHub ได้ด้วย
+
+jobs:
+  ping_supabase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase Database via REST API
+        run: |
+          curl -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/electricMoci?limit=1" \
+          -H "apikey: ${{ secrets.SUPABASE_KEY }}" \
+          -H "Authorization: Bearer ${{ secrets.SUPABASE_KEY }}"
