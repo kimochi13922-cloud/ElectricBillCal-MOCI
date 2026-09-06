@@ -50,6 +50,15 @@ const CHART_YEARS = [
   { value: 'ALL', label: 'ทุกปี' },
 ]
 
+function isAdjacentMonth(previousMonth, currentMonth) {
+  if (!previousMonth || !currentMonth) return false
+  const previous = new Date(`${previousMonth}-01T00:00:00Z`)
+  const current = new Date(`${currentMonth}-01T00:00:00Z`)
+  const next = new Date(previous)
+  next.setUTCMonth(next.getUTCMonth() + 1)
+  return next.getTime() === current.getTime()
+}
+
 /**
  * Chart showing total units every month across historical bills (Straight line)
  */
@@ -216,11 +225,12 @@ export function UserMonthlyUnitsChart({ refreshTrigger }) {
       allIce.push(0)
       allCd.push(0)
     } else {
-      const prev = billsData[idx - 1]
-      allOak.push(Math.max(0, (bill.oak_meter || 0) - (prev.oak_meter || 0)))
-      allMix.push(Math.max(0, (bill.mix_meter || 0) - (prev.mix_meter || 0)))
-      allIce.push(Math.max(0, (bill.ice_meter || 0) - (prev.ice_meter || 0)))
-      allCd.push(Math.max(0, (bill.cd_meter || 0) - (prev.cd_meter || 0)))
+      const candidate = billsData[idx - 1]
+      const prev = isAdjacentMonth(candidate?.month?.slice(0, 7), bill.month?.slice(0, 7)) ? candidate : null
+      allOak.push(prev ? Math.max(0, (bill.oak_meter || 0) - (prev.oak_meter || 0)) : 0)
+      allMix.push(prev ? Math.max(0, (bill.mix_meter || 0) - (prev.mix_meter || 0)) : 0)
+      allIce.push(prev ? Math.max(0, (bill.ice_meter || 0) - (prev.ice_meter || 0)) : 0)
+      allCd.push(prev ? Math.max(0, (bill.cd_meter || 0) - (prev.cd_meter || 0)) : 0)
     }
   })
 

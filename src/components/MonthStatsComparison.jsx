@@ -1,5 +1,3 @@
-import React from 'react'
-
 /**
  * Helper to render trend badge for cost/currency changes (Baht)
  * In financial context, increased cost is highlighted with red/orange warning (▲), lowered cost with green (▼).

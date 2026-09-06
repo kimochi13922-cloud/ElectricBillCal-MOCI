@@ -48,6 +48,7 @@ export async function getBillByMonth(yearMonth) {
     .select('*')
     .gte('month', startDate)
     .lt('month', nextMonth)
+    .order('month', { ascending: true })
 
   if (error) throw error
   return data

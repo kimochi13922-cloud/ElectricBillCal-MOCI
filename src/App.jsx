@@ -28,6 +28,15 @@ const YEARS = [
   { value: '2028', label: 'พ.ศ. 2571' },
 ]
 
+function isAdjacentMonth(previousMonth, currentMonth) {
+  if (!previousMonth || !currentMonth) return false
+  const previous = new Date(`${previousMonth}-01T00:00:00Z`)
+  const current = new Date(`${currentMonth}-01T00:00:00Z`)
+  const next = new Date(previous)
+  next.setUTCMonth(next.getUTCMonth() + 1)
+  return next.getTime() === current.getTime()
+}
+
 function App() {
   const [selectedYear, setSelectedYear] = useState('2026')
   const [selectedMonth, setSelectedMonth] = useState('')
@@ -45,6 +54,7 @@ function App() {
   const [refreshChartTrigger, setRefreshChartTrigger] = useState(0)
   const [exporting, setExporting] = useState(false)
   const resultRef = useRef(null)
+  const loadRequestRef = useRef(0)
 
   const handleExportJpg = async () => {
     if (!resultRef.current) return
@@ -70,7 +80,7 @@ function App() {
   const buildResultData = async (monthValue, yearValue, currentBill, directPrev) => {
     try {
       const allData = await getAllBills()
-      const sorted = [...(allData || [])].sort((a, b) => (a.month > b.month ? 1 : -1))
+      const sorted = [...(allData || [])].sort((a, b) => String(a.month).localeCompare(String(b.month)))
       const targetPrefix = `${yearValue}-${monthValue}`
       const idx = sorted.findIndex((b) => b.month?.startsWith(targetPrefix))
 
@@ -78,7 +88,8 @@ function App() {
       let prevPrev = null
 
       if (idx !== -1) {
-        prev = idx > 0 ? sorted[idx - 1] : null
+        const candidate = idx > 0 ? sorted[idx - 1] : null
+        prev = candidate && isAdjacentMonth(candidate.month?.slice(0, 7), targetPrefix) ? candidate : null
         prevPrev = idx > 1 ? sorted[idx - 2] : null
       } else if (directPrev) {
         prev = directPrev
@@ -122,10 +133,10 @@ function App() {
         prevMixPay: prev ? prev.mix_pay : null,
         prevIcePay: prev ? prev.ice_pay : null,
         prevCdPay: prev ? prev.cd_pay : null,
-        prevOakUnits: prev && prevPrev ? Math.max(0, (prev.oak_meter || 0) - (prevPrev.oak_meter || 0)) : null,
-        prevMixUnits: prev && prevPrev ? Math.max(0, (prev.mix_meter || 0) - (prevPrev.mix_meter || 0)) : null,
-        prevIceUnits: prev && prevPrev ? Math.max(0, (prev.ice_meter || 0) - (prevPrev.ice_meter || 0)) : null,
-        prevCdUnits: prev && prevPrev ? Math.max(0, (prev.cd_meter || 0) - (prevPrev.cd_meter || 0)) : null,
+        prevOakUnits: prev && prevPrev && isAdjacentMonth(prevPrev.month?.slice(0, 7), prev.month?.slice(0, 7)) ? Math.max(0, (prev.oak_meter || 0) - (prevPrev.oak_meter || 0)) : null,
+        prevMixUnits: prev && prevPrev && isAdjacentMonth(prevPrev.month?.slice(0, 7), prev.month?.slice(0, 7)) ? Math.max(0, (prev.mix_meter || 0) - (prevPrev.mix_meter || 0)) : null,
+        prevIceUnits: prev && prevPrev && isAdjacentMonth(prevPrev.month?.slice(0, 7), prev.month?.slice(0, 7)) ? Math.max(0, (prev.ice_meter || 0) - (prevPrev.ice_meter || 0)) : null,
+        prevCdUnits: prev && prevPrev && isAdjacentMonth(prevPrev.month?.slice(0, 7), prev.month?.slice(0, 7)) ? Math.max(0, (prev.cd_meter || 0) - (prevPrev.cd_meter || 0)) : null,
       }
     } catch (err) {
       console.error('Error building result data:', err)
@@ -146,6 +157,7 @@ function App() {
   }
 
   const loadMonthData = async (monthValue, yearValue) => {
+    const requestId = ++loadRequestRef.current
     setSelectedMonth(monthValue)
     setMessage('')
     setResult(null)
@@ -162,16 +174,12 @@ function App() {
       return
     }
 
-    let pOak = 0, pMix = 0, pIce = 0, pCd = 0
     let foundPrev = false
     let directPrevRecord = null
     const monthNum = Number(monthValue)
-    let prevMonthStr = ''
-    if (monthNum > 1) {
-      prevMonthStr = `${yearValue}-${String(monthNum - 1).padStart(2, '0')}`
-    } else {
-      prevMonthStr = `${Number(yearValue) - 1}-12`
-    }
+    const prevMonthStr = monthNum > 1
+      ? `${yearValue}-${String(monthNum - 1).padStart(2, '0')}`
+      : `${Number(yearValue) - 1}-12`
 
     try {
       const prevRecords = await getBillByMonth(prevMonthStr)
@@ -180,10 +188,6 @@ function App() {
         directPrevRecord = p
         setPrevMonth(p)
         foundPrev = true
-        pOak = p.oak_meter || 0
-        pMix = p.mix_meter || 0
-        pIce = p.ice_meter || 0
-        pCd = p.cd_meter || 0
       } else {
         setPrevMonth(null)
       }
@@ -195,6 +199,7 @@ function App() {
     const yearMonth = `${yearValue}-${monthValue}`
     try {
       const records = await getBillByMonth(yearMonth)
+      if (requestId !== loadRequestRef.current) return
       if (records && records.length > 0) {
         const bill = records[0]
 
@@ -248,16 +253,17 @@ function App() {
       if (!allData || allData.length <= 1) return
 
       // Sort chronological ascending (oldest month to newest)
-      const sorted = [...allData].sort((a, b) => (a.month > b.month ? 1 : -1))
+      const sorted = [...allData].sort((a, b) => String(a.month).localeCompare(String(b.month)))
 
       for (let i = 1; i < sorted.length; i++) {
         const curr = sorted[i]
-        const prev = sorted[i - 1]
+        const candidate = sorted[i - 1]
+        const prev = isAdjacentMonth(candidate.month?.slice(0, 7), curr.month?.slice(0, 7)) ? candidate : null
 
-        const oakUnits = Math.max(0, (curr.oak_meter || 0) - (prev.oak_meter || 0))
-        const mixUnits = Math.max(0, (curr.mix_meter || 0) - (prev.mix_meter || 0))
-        const iceUnits = Math.max(0, (curr.ice_meter || 0) - (prev.ice_meter || 0))
-        const cdUnits = Math.max(0, (curr.cd_meter || 0) - (prev.cd_meter || 0))
+        const oakUnits = prev ? Math.max(0, (curr.oak_meter || 0) - (prev.oak_meter || 0)) : 0
+        const mixUnits = prev ? Math.max(0, (curr.mix_meter || 0) - (prev.mix_meter || 0)) : 0
+        const iceUnits = prev ? Math.max(0, (curr.ice_meter || 0) - (prev.ice_meter || 0)) : 0
+        const cdUnits = prev ? Math.max(0, (curr.cd_meter || 0) - (prev.cd_meter || 0)) : 0
 
         const oakBase = oakUnits * 4.5
         const mixBase = mixUnits * 4.5
@@ -308,12 +314,23 @@ function App() {
     const ice = Number(iceMeter) || 0
     const cd = Number(cdMeter) || 0
     const total = Number(billsSum) || 0
+    const enteredTotalUnits = totalUnits === '' ? null : Number(totalUnits)
+
+    if ([oak, mix, ice, cd, total, enteredTotalUnits].some((value) => value !== null && (!Number.isFinite(value) || value < 0))) {
+      setMessage('กรุณากรอกตัวเลขที่ไม่ติดลบ')
+      return
+    }
 
     const hasPrev = prevMonth !== null
     const prevOak = hasPrev ? (Number(prevMonth.oak_meter) || 0) : 0
     const prevMix = hasPrev ? (Number(prevMonth.mix_meter) || 0) : 0
     const prevIce = hasPrev ? (Number(prevMonth.ice_meter) || 0) : 0
     const prevCd = hasPrev ? (Number(prevMonth.cd_meter) || 0) : 0
+
+    if (hasPrev && (oak < prevOak || mix < prevMix || ice < prevIce || cd < prevCd)) {
+      setMessage('ค่ามิเตอร์ต้องไม่ต่ำกว่าเดือนก่อนหน้า')
+      return
+    }
 
     // Units used this month (0 if starting baseline month)
     const oakUnits = hasPrev ? Math.max(0, oak - prevOak) : 0
@@ -327,13 +344,17 @@ function App() {
     const cdBase = cdUnits * 4.5
 
     const sumUnitsCost = oakBase + mixBase + iceBase + cdBase
+    if (sumUnitsCost > total) {
+      setMessage('ยอดค่าไฟรวมต้องไม่น้อยกว่าค่าหน่วยไฟที่คำนวณได้')
+      return
+    }
     const commonShare = (total - sumUnitsCost) / 4
 
     const oakPay = Math.round(oakBase + commonShare)
     const mixPay = Math.round(mixBase + commonShare)
     const icePay = Math.round(iceBase + commonShare)
     const cdPay = total - oakPay - mixPay - icePay
-    const totalU = Number(totalUnits) || (oakUnits + mixUnits + iceUnits + cdUnits)
+    const totalU = enteredTotalUnits ?? (oakUnits + mixUnits + iceUnits + cdUnits)
 
     const monthDate = `${selectedYear}-${selectedMonth}-01`
 
@@ -390,28 +411,27 @@ function App() {
   const showResult = result !== null
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-100 p-6 md:p-10 flex flex-col items-center">
-      <div className="w-full max-w-3xl mx-auto flex flex-col items-center text-center">
+    <div className="cosmic-app min-h-screen p-4 sm:p-6 md:p-10 flex flex-col items-center">
+      <div className="cosmic-container w-full max-w-3xl mx-auto flex flex-col items-center text-center">
         {/* Header */}
-        <div className="mb-8 text-center">
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-800">
+        <div className="cosmic-header mb-8 text-center">
+          <div className="cosmic-eyebrow">MOCI / ELECTRICITY ORBITAL</div>
+          <h1 className="text-3xl md:text-4xl font-bold">
             ระบบคำนวณค่าไฟบ้าน MOCI
           </h1>
-          <h3 className="text-lg text-gray-500 mt-1">
+          <h3 className="text-lg mt-1">
             ประจำปี {YEARS.find((y) => y.value === selectedYear)?.label || 'พ.ศ. 2569'}
           </h3>
         </div>
 
         {/* Selectors */}
-        <div className="mb-6 flex flex-wrap justify-center items-center gap-4 w-full">
+        <div className="cosmic-controls mb-6 flex flex-wrap justify-center items-center gap-4 w-full">
           {/* Year Selector */}
           <select
             id="year-select"
             value={selectedYear}
             onChange={(e) => handleYearChange(e.target.value)}
-            className="px-4 py-3 rounded-xl border border-gray-300 bg-white text-gray-700
-                       shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent
-                       transition-all text-base cursor-pointer font-medium"
+            className="cosmic-select px-4 py-3 rounded-xl text-base cursor-pointer font-medium"
           >
             {YEARS.map((y) => (
               <option key={y.value} value={y.value}>
@@ -425,9 +445,7 @@ function App() {
             id="month-select"
             value={selectedMonth}
             onChange={(e) => handleMonthChange(e.target.value)}
-            className="w-full sm:w-auto max-w-xs px-4 py-3 rounded-xl border border-gray-300 bg-white text-gray-700
-                       shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent
-                       transition-all text-base cursor-pointer"
+            className="cosmic-select w-full sm:w-auto max-w-xs px-4 py-3 rounded-xl text-base cursor-pointer"
           >
             <option value="">-- กรุณาเลือกเดือน --</option>
             {MONTHS.map((m) => (
@@ -440,7 +458,7 @@ function App() {
 
         {/* Message */}
         {message && (
-          <p className="mb-6 px-4 py-3 rounded-xl bg-white/70 backdrop-blur text-gray-700 shadow-sm text-sm w-full max-w-lg text-center">
+          <p className="cosmic-message mb-6 px-4 py-3 rounded-xl text-sm w-full max-w-lg text-center">
             {message}
           </p>
         )}
@@ -448,7 +466,7 @@ function App() {
         {/* Calculator — flex layout centered */}
         <div className="w-full max-w-lg mx-auto flex flex-col gap-6">
           {/* Form */}
-          <div className="bg-white rounded-2xl shadow-md p-6 sm:p-8 text-left">
+          <div className="cosmic-card rounded-2xl p-6 sm:p-8 text-left">
             <form onSubmit={handleSubmit} className="flex flex-col gap-5">
               {/* ค่าไฟรวม */}
               <div className="flex flex-col gap-1.5">
@@ -568,8 +586,7 @@ function App() {
               <button
                 type="submit"
                 disabled={loading}
-                className="mt-2 w-full px-6 py-3 rounded-xl bg-blue-500 hover:bg-blue-600 active:scale-[0.98]
-                           text-white font-semibold shadow-md hover:shadow-lg
+                className="cosmic-cta mt-2 w-full px-6 py-3 rounded-xl font-semibold
                            disabled:opacity-50 disabled:cursor-not-allowed
                            transition-all duration-200 cursor-pointer text-center"
               >
@@ -580,7 +597,7 @@ function App() {
 
               {/* Result — hidden until calculated or old month loaded */}
               {showResult && (
-                <div ref={resultRef} className="bg-white rounded-2xl shadow-md p-6 text-center animate-[fadeIn_0.3s_ease-out] relative">
+                <div ref={resultRef} className="cosmic-card rounded-2xl p-6 text-center animate-[fadeIn_0.3s_ease-out] relative">
                   <div className="flex justify-end mb-2 no-export">
                     <button
                       type="button"
@@ -615,12 +632,12 @@ function App() {
         </div>
 
         {/* Chart of total units every month */}
-        <div className="w-full">
+        <div className="cosmic-chart w-full">
           <MonthlyTotalUnitsChart refreshTrigger={refreshChartTrigger} />
         </div>
 
         {/* Chart of unit amount for each user every month */}
-        <div className="w-full">
+        <div className="cosmic-chart w-full">
           <UserMonthlyUnitsChart refreshTrigger={refreshChartTrigger} />
         </div>
       </div>
