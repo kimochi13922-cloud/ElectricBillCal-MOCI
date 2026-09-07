@@ -412,6 +412,20 @@ function App() {
 
   return (
     <div className="cosmic-app min-h-screen p-4 sm:p-6 md:p-10 flex flex-col items-center">
+      <div className="galaxy-background" aria-hidden="true">
+        <div className="galaxy-starfield galaxy-starfield--far" />
+        <div className="galaxy-starfield galaxy-starfield--mid" />
+        <div className="galaxy-starfield galaxy-starfield--near" />
+        <div className="galaxy-nebula galaxy-nebula--violet" />
+        <div className="galaxy-nebula galaxy-nebula--cyan" />
+        <div className="galaxy-scene">
+          <div className="galaxy-dust" />
+          <div className="galaxy-arm galaxy-arm--one" />
+          <div className="galaxy-arm galaxy-arm--two" />
+          <div className="galaxy-arm galaxy-arm--three" />
+          <div className="galaxy-core" />
+        </div>
+      </div>
       <div className="cosmic-container w-full max-w-3xl mx-auto flex flex-col items-center text-center">
         {/* Header */}
         <div className="cosmic-header mb-8 text-center">
