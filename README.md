@@ -1,5 +1,26 @@
 # React + Vite
 
+## Docker
+
+The production image requires the public Supabase values while Vite builds the
+static browser bundle. Build it with:
+
+```sh
+docker build -t electricmoci \
+  --build-arg VITE_SUPABASE_URL="https://your-project.supabase.co" \
+  --build-arg VITE_SUPABASE_PUBLISHABLE_KEY="your-publishable-key" \
+  .
+```
+
+Then run it at `http://localhost:8080`:
+
+```sh
+docker run --rm -p 8080:80 electricmoci
+```
+
+`VITE_*` values are embedded in browser code. Never provide a Supabase
+service-role key here; use only the publishable/anon key.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

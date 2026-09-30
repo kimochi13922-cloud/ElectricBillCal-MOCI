@@ -1,7 +1,7 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { toJpeg } from 'html-to-image'
 import { insertBill, getBillByMonth, updateBill, getAllBills } from './services/billsApi'
-import { MonthlyTotalUnitsChart, UserUnitsBreakdownChart, UserMonthlyUnitsChart } from './components/ElectricityCharts'
+import { MonthlyTotalUnitsChart, UserMonthlyUnitsChart } from './components/ElectricityCharts'
 import { MonthStatsComparison } from './components/MonthStatsComparison'
 import './App.css'
 
@@ -40,6 +40,8 @@ function isAdjacentMonth(previousMonth, currentMonth) {
 function App() {
   const [selectedYear, setSelectedYear] = useState('2026')
   const [selectedMonth, setSelectedMonth] = useState('')
+  const [activeTab, setActiveTab] = useState('calculator')
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [billsSum, setBillsSum] = useState('')
   const [oakMeter, setOakMeter] = useState('')
   const [mixMeter, setMixMeter] = useState('')
@@ -53,8 +55,24 @@ function App() {
   const [prevMonth, setPrevMonth] = useState(null)
   const [refreshChartTrigger, setRefreshChartTrigger] = useState(0)
   const [exporting, setExporting] = useState(false)
+  const [isNavVisible, setIsNavVisible] = useState(true)
   const resultRef = useRef(null)
   const loadRequestRef = useRef(0)
+  const lastScrollY = useRef(0)
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY
+      if (currentScrollY > lastScrollY.current && currentScrollY > 60) {
+        setIsNavVisible(false)
+      } else {
+        setIsNavVisible(true)
+      }
+      lastScrollY.current = currentScrollY
+    }
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
 
   const handleExportJpg = async () => {
     if (!resultRef.current) return
@@ -272,12 +290,16 @@ function App() {
 
         const total = curr.bills_sum || 0
         const sumUnitsCost = oakBase + mixBase + iceBase + cdBase
-        const commonShare = (total - sumUnitsCost) / 4
-
-        const oakPay = Math.round(oakBase + commonShare)
-        const mixPay = Math.round(mixBase + commonShare)
-        const icePay = Math.round(iceBase + commonShare)
-        const cdPay = total - oakPay - mixPay - icePay
+        
+        let oakPay = 0, mixPay = 0, icePay = 0, cdPay = 0;
+        
+        if (total > 0 && total >= sumUnitsCost) {
+          const commonShare = (total - sumUnitsCost) / 4
+          oakPay = Math.round(oakBase + commonShare)
+          mixPay = Math.round(mixBase + commonShare)
+          icePay = Math.round(iceBase + commonShare)
+          cdPay = total - oakPay - mixPay - icePay
+        }
         const totalU = curr.total_units || (oakUnits + mixUnits + iceUnits + cdUnits)
 
         if (
@@ -309,10 +331,16 @@ function App() {
       return
     }
 
-    const oak = Number(oakMeter) || 0
-    const mix = Number(mixMeter) || 0
-    const ice = Number(iceMeter) || 0
-    const cd = Number(cdMeter) || 0
+    const hasPrev = prevMonth !== null
+    const prevOak = hasPrev ? (Number(prevMonth.oak_meter) || 0) : 0
+    const prevMix = hasPrev ? (Number(prevMonth.mix_meter) || 0) : 0
+    const prevIce = hasPrev ? (Number(prevMonth.ice_meter) || 0) : 0
+    const prevCd = hasPrev ? (Number(prevMonth.cd_meter) || 0) : 0
+
+    const oak = oakMeter === '' ? prevOak : (Number(oakMeter) || 0)
+    const mix = mixMeter === '' ? prevMix : (Number(mixMeter) || 0)
+    const ice = iceMeter === '' ? prevIce : (Number(iceMeter) || 0)
+    const cd = cdMeter === '' ? prevCd : (Number(cdMeter) || 0)
     const total = Number(billsSum) || 0
     const enteredTotalUnits = totalUnits === '' ? null : Number(totalUnits)
 
@@ -320,12 +348,6 @@ function App() {
       setMessage('กรุณากรอกตัวเลขที่ไม่ติดลบ')
       return
     }
-
-    const hasPrev = prevMonth !== null
-    const prevOak = hasPrev ? (Number(prevMonth.oak_meter) || 0) : 0
-    const prevMix = hasPrev ? (Number(prevMonth.mix_meter) || 0) : 0
-    const prevIce = hasPrev ? (Number(prevMonth.ice_meter) || 0) : 0
-    const prevCd = hasPrev ? (Number(prevMonth.cd_meter) || 0) : 0
 
     if (hasPrev && (oak < prevOak || mix < prevMix || ice < prevIce || cd < prevCd)) {
       setMessage('ค่ามิเตอร์ต้องไม่ต่ำกว่าเดือนก่อนหน้า')
@@ -344,16 +366,16 @@ function App() {
     const cdBase = cdUnits * 4.5
 
     const sumUnitsCost = oakBase + mixBase + iceBase + cdBase
-    if (sumUnitsCost > total) {
-      setMessage('ยอดค่าไฟรวมต้องไม่น้อยกว่าค่าหน่วยไฟที่คำนวณได้')
-      return
+    
+    let oakPay = 0, mixPay = 0, icePay = 0, cdPay = 0;
+    
+    if (total > 0 && total >= sumUnitsCost) {
+      const commonShare = (total - sumUnitsCost) / 4
+      oakPay = Math.round(oakBase + commonShare)
+      mixPay = Math.round(mixBase + commonShare)
+      icePay = Math.round(iceBase + commonShare)
+      cdPay = total - oakPay - mixPay - icePay
     }
-    const commonShare = (total - sumUnitsCost) / 4
-
-    const oakPay = Math.round(oakBase + commonShare)
-    const mixPay = Math.round(mixBase + commonShare)
-    const icePay = Math.round(iceBase + commonShare)
-    const cdPay = total - oakPay - mixPay - icePay
     const totalU = enteredTotalUnits ?? (oakUnits + mixUnits + iceUnits + cdUnits)
 
     const monthDate = `${selectedYear}-${selectedMonth}-01`
@@ -411,35 +433,98 @@ function App() {
   const showResult = result !== null
 
   return (
-    <div className="cosmic-app min-h-screen p-4 sm:p-6 md:p-10 flex flex-col items-center">
+    <div className="cosmic-app min-h-screen flex flex-col md:flex-row w-full relative">
       <div className="galaxy-background" aria-hidden="true">
         <div className="galaxy-starfield galaxy-starfield--far" />
         <div className="galaxy-starfield galaxy-starfield--mid" />
         <div className="galaxy-starfield galaxy-starfield--near" />
         <div className="galaxy-nebula galaxy-nebula--violet" />
         <div className="galaxy-nebula galaxy-nebula--cyan" />
-        <div className="galaxy-scene">
-          <div className="galaxy-dust" />
-          <div className="galaxy-arm galaxy-arm--one" />
-          <div className="galaxy-arm galaxy-arm--two" />
-          <div className="galaxy-arm galaxy-arm--three" />
-          <div className="galaxy-core" />
-        </div>
+        
+        {/* Halloween Floating Elements */}
+        <div className="halloween-float icon-1">🎃</div>
+        <div className="halloween-float icon-2">👻</div>
+        <div className="halloween-float icon-3">🦇</div>
+        <div className="halloween-float icon-4">🎃</div>
+        <div className="halloween-float icon-5">👻</div>
+        <div className="halloween-float icon-6">🦇</div>
       </div>
-      <div className="cosmic-container w-full max-w-3xl mx-auto flex flex-col items-center text-center">
-        {/* Header */}
-        <div className="cosmic-header mb-8 text-center">
-          <div className="cosmic-eyebrow">MOCI / ELECTRICITY ORBITAL</div>
-          <h1 className="text-3xl md:text-4xl font-bold">
-            ระบบคำนวณค่าไฟบ้าน MOCI
+
+      {/* Desktop Sidebar Toggle */}
+      <button
+        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+        className={`hidden md:flex fixed top-6 z-50 p-2 rounded-lg bg-gray-900/80 text-white border border-gray-700/50 hover:bg-gray-800 transition-all duration-300 backdrop-blur-md shadow-lg ${
+          isSidebarOpen ? 'left-[14.5rem]' : 'left-4'
+        }`}
+        aria-label="Toggle Sidebar"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className={`h-5 w-5 transition-transform duration-300 ${isSidebarOpen ? 'rotate-0' : 'rotate-180'}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+        </svg>
+      </button>
+
+      {/* Sidebar Navigation */}
+      <nav className={`w-full sticky top-0 md:h-screen md:self-start border-b md:border-b-0 border-gray-700/50 bg-gray-900/40 backdrop-blur-xl flex flex-col z-40 shrink-0 transition-transform duration-300 overflow-hidden ${
+        isSidebarOpen ? 'md:w-64 p-4 md:p-6 md:border-r' : 'md:w-0 p-4 md:p-0'
+      } ${!isNavVisible ? '-translate-y-full md:translate-y-0' : 'translate-y-0'}`}>
+        <div className="hidden md:block mb-10 text-left w-48">
+          <div className="cosmic-eyebrow">MOCI / ORBITAL</div>
+          <h1 className="text-2xl font-bold text-white mt-1 leading-tight">
+            ระบบคำนวณ<br/>ค่าไฟบ้าน MOCI
           </h1>
-          <h3 className="text-lg mt-1">
+          <h3 className="text-sm mt-2 text-gray-300">
             ประจำปี {YEARS.find((y) => y.value === selectedYear)?.label || 'พ.ศ. 2569'}
           </h3>
         </div>
 
-        {/* Selectors */}
-        <div className="cosmic-controls mb-6 flex flex-wrap justify-center items-center gap-4 w-full">
+        {/* Mobile Header */}
+        <div className="md:hidden flex justify-between items-center mb-4">
+          <div className="text-left">
+            <div className="cosmic-eyebrow mb-0">MOCI / ORBITAL</div>
+            <h1 className="text-xl font-bold text-white">ระบบคำนวณค่าไฟบ้าน</h1>
+          </div>
+        </div>
+
+        <div className="flex md:flex-col gap-2 overflow-x-auto pb-2 md:pb-0">
+          <button
+            onClick={() => setActiveTab('calculator')}
+            type="button"
+            className={`px-4 py-3 rounded-xl font-semibold transition-all duration-300 whitespace-nowrap text-left ${
+              activeTab === 'calculator'
+                ? 'bg-orange-600 text-white shadow-[0_0_15px_rgba(255,102,0,0.4)]'
+                : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+            }`}
+          >
+            🧮 คำนวณค่าไฟ
+          </button>
+          <button
+            onClick={() => setActiveTab('stats')}
+            type="button"
+            className={`px-4 py-3 rounded-xl font-semibold transition-all duration-300 whitespace-nowrap text-left ${
+              activeTab === 'stats'
+                ? 'bg-orange-600 text-white shadow-[0_0_15px_rgba(255,102,0,0.4)]'
+                : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+            }`}
+          >
+            📊 สถิติย้อนหลัง
+          </button>
+        </div>
+      </nav>
+
+      {/* Main Content Area */}
+      <main className="flex-1 p-4 sm:p-6 md:p-10 z-10 overflow-x-hidden w-full relative">
+        <div className="cosmic-container w-full max-w-3xl mx-auto flex flex-col items-center text-center">
+
+        {activeTab === 'calculator' ? (
+          <>
+            {/* Selectors */}
+            <div className="cosmic-controls mb-6 flex flex-wrap justify-center items-center gap-4 w-full">
           {/* Year Selector */}
           <select
             id="year-select"
@@ -478,10 +563,10 @@ function App() {
         )}
 
         {/* Calculator — flex layout centered */}
-        <div className="w-full max-w-lg mx-auto flex flex-col gap-6">
+        <div className="w-full max-w-2xl mx-auto flex flex-col gap-8">
           {/* Form */}
           <div className="cosmic-card rounded-2xl p-6 sm:p-8 text-left">
-            <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-x-8 md:gap-y-6">
               {/* ค่าไฟรวม */}
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="bills-sum" className="font-semibold text-gray-700">
@@ -495,7 +580,7 @@ function App() {
                   onChange={(e) => setBillsSum(e.target.value)}
                   placeholder="เช่น 3500"
                   className="px-4 py-2.5 rounded-lg border border-gray-300 text-sm
-                             focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                             focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent transition-all"
                 />
               </div>
 
@@ -512,7 +597,7 @@ function App() {
                   onChange={(e) => setTotalUnits(e.target.value)}
                   placeholder="เช่น 230"
                   className="px-4 py-2.5 rounded-lg border border-gray-300 text-sm
-                             focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                             focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent transition-all"
                 />
               </div>
 
@@ -532,7 +617,7 @@ function App() {
                   onChange={(e) => setOakMeter(e.target.value)}
                   placeholder="หน่วยไฟ"
                   className="px-4 py-2.5 rounded-lg border border-gray-300 text-sm
-                             focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                             focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent transition-all"
                 />
               </div>
 
@@ -552,7 +637,7 @@ function App() {
                   onChange={(e) => setMixMeter(e.target.value)}
                   placeholder="หน่วยไฟ"
                   className="px-4 py-2.5 rounded-lg border border-gray-300 text-sm
-                             focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                             focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent transition-all"
                 />
               </div>
 
@@ -572,7 +657,7 @@ function App() {
                   onChange={(e) => setIceMeter(e.target.value)}
                   placeholder="หน่วยไฟ"
                   className="px-4 py-2.5 rounded-lg border border-gray-300 text-sm
-                             focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                             focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent transition-all"
                 />
               </div>
 
@@ -592,20 +677,22 @@ function App() {
                   onChange={(e) => setCdMeter(e.target.value)}
                   placeholder="หน่วยไฟ"
                   className="px-4 py-2.5 rounded-lg border border-gray-300 text-sm
-                             focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-all"
+                             focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent transition-all"
                 />
               </div>
 
               {/* Submit */}
-              <button
-                type="submit"
-                disabled={loading}
-                className="cosmic-cta mt-2 w-full px-6 py-3 rounded-xl font-semibold
-                           disabled:opacity-50 disabled:cursor-not-allowed
-                           transition-all duration-200 cursor-pointer text-center"
-              >
-                {loading ? 'กำลังบันทึก...' : existingId ? 'คำนวณ & อัปเดต' : 'คำนวณ & บันทึก'}
-              </button>
+              <div className="md:col-span-2 pt-4">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="cosmic-cta w-full px-6 py-3.5 rounded-xl font-semibold text-lg
+                             disabled:opacity-50 disabled:cursor-not-allowed
+                             transition-all duration-200 cursor-pointer text-center shadow-lg hover:-translate-y-0.5"
+                >
+                  {loading ? 'กำลังบันทึก...' : existingId ? 'คำนวณ & อัปเดต' : 'คำนวณ & บันทึก'}
+                </button>
+              </div>
             </form>
           </div>
 
@@ -617,7 +704,7 @@ function App() {
                       type="button"
                       onClick={handleExportJpg}
                       disabled={exporting}
-                      className="px-3.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-xs flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer disabled:opacity-50 border border-blue-200/60"
+                      className="px-3.5 py-1.5 rounded-xl bg-orange-50 hover:bg-orange-100 text-orange-700 font-semibold text-xs flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer disabled:opacity-50 border border-orange-200/60"
                     >
                       <span>📷</span> {exporting ? 'กำลังบันทึกภาพ...' : 'ส่งออกเป็นภาพ JPG'}
                     </button>
@@ -625,7 +712,7 @@ function App() {
                   <h2 className="text-xl font-bold text-gray-800 mb-4">
                     สรุปยอดค่าไฟประจำเดือน{result ? ` ${result.month}` : ''}
                   </h2>
-                  <h3 className="text-lg font-semibold text-blue-600 mb-1">
+                  <h3 className="text-lg font-semibold text-orange-600 mb-1">
                     ค่าไฟรวมทั้งบ้าน : {result ? `${result.billsSum.toLocaleString()} บาท` : '-'}
                   </h3>
                   <h3 className="text-base font-semibold text-gray-600 mt-4 mb-2">แยกตามมิเตอร์</h3>
@@ -639,22 +726,27 @@ function App() {
                   {/* Month-over-Month Stats Comparison */}
                   <MonthStatsComparison resultData={result} />
 
-                  {/* Each unit user chart on the result */}
-                  <UserUnitsBreakdownChart resultData={result} />
                 </div>
               )}
         </div>
+          </>
+        ) : (
+          <div className="w-full max-w-3xl mx-auto flex flex-col gap-8 animate-[fadeIn_0.3s_ease-out]">
+            <h2 className="text-2xl font-bold text-white mb-2 text-left">สถิติการใช้ไฟฟ้ารวม</h2>
+            {/* Chart of total units every month */}
+            <div className="cosmic-chart w-full">
+              <MonthlyTotalUnitsChart refreshTrigger={refreshChartTrigger} />
+            </div>
 
-        {/* Chart of total units every month */}
-        <div className="cosmic-chart w-full">
-          <MonthlyTotalUnitsChart refreshTrigger={refreshChartTrigger} />
+            <h2 className="text-2xl font-bold text-white mb-2 mt-4 text-left">สถิติแยกตามบุคคล</h2>
+            {/* Chart of unit amount for each user every month */}
+            <div className="cosmic-chart w-full">
+              <UserMonthlyUnitsChart refreshTrigger={refreshChartTrigger} />
+            </div>
+          </div>
+        )}
         </div>
-
-        {/* Chart of unit amount for each user every month */}
-        <div className="cosmic-chart w-full">
-          <UserMonthlyUnitsChart refreshTrigger={refreshChartTrigger} />
-        </div>
-      </div>
+      </main>
     </div>
   )
 }

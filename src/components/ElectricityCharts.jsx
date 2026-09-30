@@ -103,11 +103,11 @@ export function MonthlyTotalUnitsChart({ refreshTrigger }) {
         label: 'จำนวนหน่วยรวม (Units)',
         data: filteredBills.map((b) => b.total_units || 0),
         fill: true,
-        backgroundColor: 'rgba(59, 130, 246, 0.15)',
-        borderColor: 'rgb(37, 99, 235)',
+        backgroundColor: 'rgba(255, 102, 0, 0.2)',
+        borderColor: '#ff6600',
         borderWidth: 3,
         tension: 0,
-        pointBackgroundColor: 'rgb(37, 99, 235)',
+        pointBackgroundColor: '#ff6600',
         pointBorderColor: '#fff',
         pointBorderWidth: 2,
         pointRadius: 5,
@@ -133,27 +133,27 @@ export function MonthlyTotalUnitsChart({ refreshTrigger }) {
     scales: {
       y: {
         beginAtZero: true,
-        grid: { color: 'rgba(226, 232, 240, 0.6)' },
-        ticks: { font: { size: 11 } },
+        grid: { color: 'rgba(255, 102, 0, 0.15)' },
+        ticks: { font: { size: 11 }, color: '#ffc485' },
       },
       x: {
         grid: { display: false },
-        ticks: { font: { size: 11 } },
+        ticks: { font: { size: 11 }, color: '#ffc485' },
       },
     },
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-md p-6 mt-6">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+    <div className="p-4 w-full h-full">
+      <div className="flex flex-wrap items-center justify-end gap-3 mb-4">
+        <h3 className="text-lg font-bold text-orange-300 flex items-center gap-2 hidden">
           <span></span> 📈สรุปจำนวนหน่วยไฟฟ้ารวมทุกเดือน
         </h3>
         <select
           value={selectedYear}
           onChange={(e) => setSelectedYear(e.target.value)}
-          className="px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-gray-700 text-sm font-medium
-                     shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent cursor-pointer"
+          className="px-3 py-1.5 rounded-lg border border-gray-700 bg-gray-800 text-white text-sm font-medium
+                     shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent cursor-pointer"
         >
           {CHART_YEARS.map((y) => (
             <option key={y.value} value={y.value}>
@@ -254,8 +254,8 @@ export function UserMonthlyUnitsChart({ refreshTrigger }) {
       {
         label: 'โอ๊ค',
         data: oakSeries,
-        borderColor: '#2563eb', // Blue
-        backgroundColor: '#2563eb',
+        borderColor: '#ff6600', // Pumpkin Orange
+        backgroundColor: '#ff6600',
         borderWidth: 2.5,
         tension: 0,
         pointRadius: 4,
@@ -263,8 +263,8 @@ export function UserMonthlyUnitsChart({ refreshTrigger }) {
       {
         label: 'มิกซ์',
         data: mixSeries,
-        borderColor: '#059669', // Emerald
-        backgroundColor: '#059669',
+        borderColor: '#a855f7', // Spooky Purple
+        backgroundColor: '#a855f7',
         borderWidth: 2.5,
         tension: 0,
         pointRadius: 4,
@@ -272,8 +272,8 @@ export function UserMonthlyUnitsChart({ refreshTrigger }) {
       {
         label: 'ไอซ์',
         data: iceSeries,
-        borderColor: '#d97706', // Amber
-        backgroundColor: '#d97706',
+        borderColor: '#10b981', // Slime Green
+        backgroundColor: '#10b981',
         borderWidth: 2.5,
         tension: 0,
         pointRadius: 4,
@@ -281,8 +281,8 @@ export function UserMonthlyUnitsChart({ refreshTrigger }) {
       {
         label: 'ซีดี',
         data: cdSeries,
-        borderColor: '#7c3aed', // Purple
-        backgroundColor: '#7c3aed',
+        borderColor: '#f43f5e', // Blood Red
+        backgroundColor: '#f43f5e',
         borderWidth: 2.5,
         tension: 0,
         pointRadius: 4,
@@ -307,27 +307,27 @@ export function UserMonthlyUnitsChart({ refreshTrigger }) {
     scales: {
       y: {
         beginAtZero: true,
-        grid: { color: 'rgba(226, 232, 240, 0.6)' },
-        ticks: { font: { size: 11 } },
+        grid: { color: 'rgba(255, 102, 0, 0.15)' },
+        ticks: { font: { size: 11 }, color: '#ffc485' },
       },
       x: {
         grid: { display: false },
-        ticks: { font: { size: 11 } },
+        ticks: { font: { size: 11 }, color: '#ffc485' },
       },
     },
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-md p-6 mt-6">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+    <div className="p-4 w-full h-full">
+      <div className="flex flex-wrap items-center justify-end gap-3 mb-4">
+        <h3 className="text-lg font-bold text-orange-300 flex items-center gap-2 hidden">
           <span></span> 📉จำนวนหน่วยไฟฟ้าของแต่ละคนในแต่ละเดือน
         </h3>
         <select
           value={selectedYear}
           onChange={(e) => setSelectedYear(e.target.value)}
-          className="px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-gray-700 text-sm font-medium
-                     shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent cursor-pointer"
+          className="px-3 py-1.5 rounded-lg border border-gray-700 bg-gray-800 text-white text-sm font-medium
+                     shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent cursor-pointer"
         >
           {CHART_YEARS.map((y) => (
             <option key={y.value} value={y.value}>
